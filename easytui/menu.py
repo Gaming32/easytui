@@ -1,10 +1,12 @@
 """"""
 
 
-from typing import List
+from typing import Optional, Union
 
 
 class MenuOption:
+    text: Optional[str]
+
     def __init__(self, text=None, action=None):
         self.text = text
         self._handlers = self._default_handlers.copy()
@@ -31,14 +33,16 @@ class MenuOption:
 
 
 class BaseRenderer:
+    menu: 'Menu'
+    selected_option: int
     _render_classes = {}
 
-    def __init__(self, menu):
+    def __init__(self, menu: 'Menu'):
         self.menu = menu
         self.selected_option = 0
         self._should_exit = False
 
-    def render(self):
+    def render(self) -> MenuOption:
         self._should_exit = False
         if self.__class__ == BaseRenderer:
             raise NotImplementedError('please define `render` in subclass')
@@ -67,6 +71,10 @@ class SimpleMenuRenderer(BaseRenderer):
             return
         else:
             return value
+
+    def exit(self):
+        super().exit()
+        self.menu.stay_open = False
 
     def render(self):
         super().render()
@@ -101,13 +109,16 @@ BaseRenderer._render_classes['vertical'] = VerticalMenuRenderer
 
 
 class Menu:
-    options: List[MenuOption]
+    label: Optional[str]
+    options: list[MenuOption]
+    _render_class: type[BaseRenderer]
+    stay_open: bool
 
     def __init__(self,
-                 label=None,
-                 options: List[MenuOption] = None,
-                 render_class='simple',
-                 stay_open=True):
+                 label: Optional[str] = None,
+                 options: list[MenuOption] = None,
+                 render_class: Union[str, type[BaseRenderer]] = 'simple',
+                 stay_open: bool = True):
         if options is None:
             options = []
         self.label = label
@@ -116,20 +127,20 @@ class Menu:
         self.default_stay_open = stay_open
 
     @property
-    def render_class(self):
+    def render_class(self) -> type[BaseRenderer]:
         return self._render_class
 
     @render_class.setter
-    def render_class(self, klass):
+    def render_class(self, klass: Union[str, type[BaseRenderer]]):
         self._render_class = BaseRenderer._render_classes.get(klass, klass)
 
-    def render(self, renderer=None):
+    def render(self, renderer: Optional[BaseRenderer] = None):
         self.stay_open = self.default_stay_open
         first_run = True
+        if renderer is None:
+            renderer = self.render_class(self)
         while self.stay_open or first_run:
             first_run = False
-            if renderer is None:
-                renderer = self.render_class(self)
             action = renderer.render()
             if action is not None:
                 result = action._invoke('click', renderer)
@@ -138,16 +149,15 @@ class Menu:
         return result
 
 
-del List
-
-
 if __name__ == '__main__':
+    import colorama
     options = [
         MenuOption('opt1', lambda menu: print(menu)),
         MenuOption('opt2', lambda menu: exec('raise Exception')),
         MenuOption(),
         MenuOption('abc', lambda menu: print('abc')),
-        MenuOption('def', lambda menu: setattr(menu.menu, 'stay_open', False)),
+        MenuOption('def', lambda menu: menu.exit()),
     ]
     mymenu = Menu('Main Menu', options=options)
-    mymenu.render()
+    with colorama.colorama_text():
+        mymenu.render()
